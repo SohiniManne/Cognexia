@@ -6,16 +6,17 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pinecone import Pinecone
 
-# --- NEW IMPORTS ---
+# --- NEW IMPORTS (LIGHTWEIGHT) ---
 from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings # <--- The Diet Fix
 from langchain_pinecone import PineconeVectorStore
-from langchain_community.document_loaders import PyMuPDFLoader # <--- THE FIX
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
+# 1. Setup
 load_dotenv()
 app = FastAPI(title="Cognexia RAG API")
 
@@ -27,8 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Components
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# 2. Initialize Components (Using FastEmbed)
+# This uses <200MB RAM instead of 600MB
+embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 
 vectorstore = PineconeVectorStore(
     index_name=os.getenv("PINECONE_INDEX_NAME"),
@@ -52,6 +54,8 @@ prompt = ChatPromptTemplate.from_template(template)
 def format_docs(docs):
     return "\n\n".join([d.page_content for d in docs])
 
+# 3. API Endpoints
+
 class QueryRequest(BaseModel):
     query: str
 
@@ -61,9 +65,7 @@ def home():
 
 @app.post("/chat")
 async def chat(request: QueryRequest):
-    # Search for top 10 chunks (increased from 5 to catch Abstracts better)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 10})
-    
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
     rag_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
@@ -76,7 +78,7 @@ async def chat(request: QueryRequest):
 @app.post("/ingest")
 async def ingest_document(file: UploadFile = File(...)):
     try:
-        # WIPE MEMORY
+        # Step 1: Wipe Memory (Safe)
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
         try:
@@ -84,14 +86,12 @@ async def ingest_document(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # PROCESS FILE
+        # Step 2: Process File
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # --- THE FIX: Use PyMuPDFLoader ---
-        # This reads columns correctly
-        loader = PyMuPDFLoader(temp_filename) 
+        loader = PyMuPDFLoader(temp_filename)
         raw_docs = loader.load()
         
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
