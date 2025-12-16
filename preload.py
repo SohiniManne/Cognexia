@@ -1,6 +1,6 @@
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 
-print("⬇️ Downloading AI Model for Cache...")
-# This forces the download to happen now, saving it to the disk
-HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-print("✅ Model downloaded successfully!")
+print("⬇️ Downloading FastEmbed Model...")
+# This forces the download of the lightweight model
+FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+print("✅ FastEmbed Model Ready!")
