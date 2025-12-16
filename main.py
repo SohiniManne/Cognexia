@@ -69,8 +69,8 @@ async def chat(request: QueryRequest):
     chain = prompt | llm | StrOutputParser()
     answer = chain.invoke({"context": context_text, "question": request.query})
     
-    # 4. Extract Unique Citations
-    # PyMuPDF pages are 0-indexed, so we add +1
+    # 4. Extract Unique Citations (The Upgrade)
+    # PyMuPDF pages are 0-indexed, so we add +1 to make it human-readable
     sources = sorted(list(set([f"Page {doc.metadata.get('page', 0) + 1}" for doc in docs])))
     
     return {"answer": answer, "sources": sources}
