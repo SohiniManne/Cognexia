@@ -58,8 +58,11 @@ if prompt := st.chat_input("Ask a question about your PDF..."):
                 ans = data["answer"]
                 sources = data.get("sources", [])
                 
-                # Combine answer with citations
-                full_response = ans + "\n\n**Sources:** " + ", ".join(sources)
+                # Create the final answer with citations
+                if sources:
+                    full_response = f"{ans}\n\n**Sources:** {', '.join(sources)}"
+                else:
+                    full_response = ans
                 
                 placeholder.markdown(full_response)
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
