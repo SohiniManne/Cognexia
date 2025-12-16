@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pinecone import Pinecone
 
-# --- NEW IMPORTS (LIGHTWEIGHT) ---
+# Imports
 from langchain_groq import ChatGroq
-from langchain_community.embeddings.fastembed import FastEmbedEmbeddings # <--- The Diet Fix
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -16,7 +16,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-# 1. Setup
 load_dotenv()
 app = FastAPI(title="Cognexia RAG API")
 
@@ -28,8 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Initialize Components (Using FastEmbed)
-# This uses <200MB RAM instead of 600MB
+# Initialize Components
 embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 
 vectorstore = PineconeVectorStore(
@@ -51,11 +49,6 @@ Question:
 """
 prompt = ChatPromptTemplate.from_template(template)
 
-def format_docs(docs):
-    return "\n\n".join([d.page_content for d in docs])
-
-# 3. API Endpoints
-
 class QueryRequest(BaseModel):
     query: str
 
@@ -65,20 +58,26 @@ def home():
 
 @app.post("/chat")
 async def chat(request: QueryRequest):
+    # 1. Retrieve Docs
     retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
-    rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    response = rag_chain.invoke(request.query)
-    return {"answer": response}
+    docs = retriever.invoke(request.query)
+    
+    # 2. Format Context
+    context_text = "\n\n".join([d.page_content for d in docs])
+    
+    # 3. Generate Answer
+    chain = prompt | llm | StrOutputParser()
+    answer = chain.invoke({"context": context_text, "question": request.query})
+    
+    # 4. Extract Unique Citations
+    # PyMuPDF pages are 0-indexed, so we add +1
+    sources = sorted(list(set([f"Page {doc.metadata.get('page', 0) + 1}" for doc in docs])))
+    
+    return {"answer": answer, "sources": sources}
 
 @app.post("/ingest")
 async def ingest_document(file: UploadFile = File(...)):
     try:
-        # Step 1: Wipe Memory (Safe)
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
         try:
@@ -86,7 +85,6 @@ async def ingest_document(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # Step 2: Process File
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
