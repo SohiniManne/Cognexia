@@ -12,7 +12,6 @@
 
 **Cognexia** is an end-to-end **Retrieval-Augmented Generation (RAG)** system that allows users to upload complex PDF documents (such as research papers) and ask questions about them. The system uses a decoupled client-server architecture to ensure scalability and separation of concerns.
 
-This project was built to specifically address **Task 1** of the assessment:
 > *"Build an end-to-end RAG system with document ingestion, chunking, embeddings, vector database search, and LLM-based answer generation **with citations**."*
 
 ### 🚀 Key Features
