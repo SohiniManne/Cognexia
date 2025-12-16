@@ -5,9 +5,9 @@ python-multipart
 langchain
 langchain-community
 langchain-groq
-langchain-huggingface
 langchain-pinecone
-sentence-transformers
+langchain-text-splitters
+pinecone-client
 pymupdf
 tiktoken
-pinecone-client
+fastembed
