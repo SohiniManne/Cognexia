@@ -86,39 +86,29 @@ async def ingest_document(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # Step 2: Process File (Batch Mode)
+        # Step 2: Process File (Lazy Mode)
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
         loader = PyMuPDFLoader(temp_filename)
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
         
-        batch = []
-        total_chunks = 0
-        
-        # --- SMART BATCHING ---
-        # We read the file ONE page at a time
+        # --- NEW SAFE LOADING ---
+        raw_docs = []
+        # lazy_load reads one page at a time. We stop after 3 pages.
         for doc in loader.lazy_load():
-            # Convert just this 1 page into chunks
-            page_chunks = text_splitter.split_documents([doc])
-            batch.extend(page_chunks)
-            
-            # Whenever we have 50 chunks, send them to Pinecone and CLEAR RAM
-            if len(batch) >= 50:
-                vectorstore.add_documents(batch)
-                total_chunks += len(batch)
-                batch = []  # <--- This prevents the crash!
-                
-        # Send any remaining chunks at the end
-        if batch:
-            vectorstore.add_documents(batch)
-            total_chunks += len(batch)
-        # ----------------------
-
+            raw_docs.append(doc)
+            if len(raw_docs) >= 3: # LIMIT: Only read first 3 pages
+                break
+        # ------------------------
+        
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
+        documents = text_splitter.split_documents(raw_docs)
+        
+        vectorstore.add_documents(documents)
         os.remove(temp_filename)
         
-        return {"status": "success", "chunks": total_chunks}
+        return {"status": "success", "chunks": len(documents)}
         
     except Exception as e:
         print(f"Error ingesting: {str(e)}")
