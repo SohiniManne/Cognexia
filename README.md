@@ -7,6 +7,10 @@
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)
 
 ---
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://cognexia.streamlit.app/)
+[![Deployed on Render](https://img.shields.io/badge/Backend-Render-46E3B7)](https://cognexia-backend.onrender.com/docs)
+
+**Live Demo:** [https://cognexia.streamlit.app/](https://cognexia.streamlit.app/)
 
 ## 📖 Overview
 
