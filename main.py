@@ -89,10 +89,15 @@ async def ingest_document(file: UploadFile = File(...)):
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
+        # In main.py, inside ingest_document:
         loader = PyMuPDFLoader(temp_filename)
         raw_docs = loader.load()
+
+       # ADD THIS LINE TO LIMIT PAGES FOR TESTING
+       raw_docs = raw_docs[:5]  # Only process first 5 pages
         
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        # Change this line in main.py
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=200)
         documents = text_splitter.split_documents(raw_docs)
         
         vectorstore.add_documents(documents)
