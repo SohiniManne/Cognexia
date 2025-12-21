@@ -19,16 +19,28 @@ API_BASE_URL = get_api_url()
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("📂 Knowledge Base")
-    uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
+    
+    # 1. Add a meaningful Help Tooltip to the uploader
+    uploaded_file = st.file_uploader(
+        "Upload a PDF", 
+        type="pdf", 
+        help="The system will process as much of the file as possible within the Free Tier time limit (approx. 40s)."
+    )
+    
+    # 2. Add a Caption to explain the "Smart Timer" logic explicitly
+    st.caption("🟢 **Free Tier Mode:** Processing auto-stops after 40s to prevent crashing. Large files will be indexed partially.")
     
     if uploaded_file is not None:
         if st.button("Ingest Document"):
-            with st.spinner("Processing..."):
+            with st.spinner("Processing (Smart Time-Limit Active)..."):
                 files = {"file": (uploaded_file.name, uploaded_file, "application/pdf")}
                 try:
                     response = requests.post(f"{API_BASE_URL}/ingest", files=files)
                     if response.status_code == 200:
-                        st.success(f"✅ Indexed {response.json()['chunks']} chunks!")
+                        data = response.json()
+                        # Show the user exactly what happened
+                        st.success(f"✅ {data.get('note', 'Indexing Complete!')}")
+                        st.info(f"📄 Processed {data.get('pages_processed', '?')} pages successfully.")
                     else:
                         st.error(f"Error: {response.text}")
                 except Exception as e:
