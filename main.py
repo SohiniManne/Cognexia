@@ -86,30 +86,40 @@ async def ingest_document(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # Step 2: Process File
+        # Step 2: Process File (Batch Mode)
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
         loader = PyMuPDFLoader(temp_filename)
-        raw_docs = loader.load()
-
-        # --- THE SAFETY FIX ---
-        # Only take the first 5 pages. This prevents the Free Server from crashing.
-        if len(raw_docs) > 5:
-            raw_docs = raw_docs[:5]
-        # ----------------------
-        
-        # Use a larger chunk size to reduce the number of vectors
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
-        documents = text_splitter.split_documents(raw_docs)
         
-        vectorstore.add_documents(documents)
+        batch = []
+        total_chunks = 0
+        
+        # --- SMART BATCHING ---
+        # We read the file ONE page at a time
+        for doc in loader.lazy_load():
+            # Convert just this 1 page into chunks
+            page_chunks = text_splitter.split_documents([doc])
+            batch.extend(page_chunks)
+            
+            # Whenever we have 50 chunks, send them to Pinecone and CLEAR RAM
+            if len(batch) >= 50:
+                vectorstore.add_documents(batch)
+                total_chunks += len(batch)
+                batch = []  # <--- This prevents the crash!
+                
+        # Send any remaining chunks at the end
+        if batch:
+            vectorstore.add_documents(batch)
+            total_chunks += len(batch)
+        # ----------------------
+
         os.remove(temp_filename)
         
-        return {"status": "success", "chunks": len(documents)}
+        return {"status": "success", "chunks": total_chunks}
         
     except Exception as e:
-        # This print will show up in your Render logs if it fails
         print(f"Error ingesting: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ingest failed: {str(e)}")
