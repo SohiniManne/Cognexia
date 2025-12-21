@@ -78,7 +78,7 @@ async def chat(request: QueryRequest):
 @app.post("/ingest")
 async def ingest_document(file: UploadFile = File(...)):
     try:
-        # Step 1: Wipe Memory (Safe)
+        # Step 1: Wipe Memory
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
         try:
@@ -86,29 +86,41 @@ async def ingest_document(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # Step 2: Process File (Lazy Mode)
+        # Step 2: Process File
         temp_filename = f"temp_{file.filename}"
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
         loader = PyMuPDFLoader(temp_filename)
-        
-        # --- NEW SAFE LOADING ---
-        raw_docs = []
-        # lazy_load reads one page at a time. We stop after 3 pages.
-        for doc in loader.lazy_load():
-            raw_docs.append(doc)
-            if len(raw_docs) >= 3: # LIMIT: Only read first 3 pages
-                break
-        # ------------------------
-        
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
-        documents = text_splitter.split_documents(raw_docs)
         
-        vectorstore.add_documents(documents)
+        batch = []
+        page_count = 0
+        
+        # --- THE SAFETY LIMIT ---
+        # We process up to 20 pages. This fits safely in the 50-second Free Tier window.
+        for doc in loader.lazy_load():
+            page_count += 1
+            if page_count > 20: 
+                break  # Stop before Timeout
+            
+            # Process this page
+            page_chunks = text_splitter.split_documents([doc])
+            batch.extend(page_chunks)
+            
+            # Send to Pinecone in small batches
+            if len(batch) >= 10:
+                vectorstore.add_documents(batch)
+                batch = []
+                
+        # Send leftovers
+        if batch:
+            vectorstore.add_documents(batch)
+        # ----------------------
+
         os.remove(temp_filename)
         
-        return {"status": "success", "chunks": len(documents)}
+        return {"status": "success", "chunks": page_count}
         
     except Exception as e:
         print(f"Error ingesting: {str(e)}")
