@@ -1,5 +1,6 @@
 import os
 import shutil
+import time 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
@@ -75,9 +76,12 @@ async def chat(request: QueryRequest):
     
     return {"answer": answer, "sources": sources}
 
+
 @app.post("/ingest")
 async def ingest_document(file: UploadFile = File(...)):
     try:
+        start_time = time.time()  # Start the stopwatch
+
         # Step 1: Wipe Memory
         pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
         index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
@@ -97,30 +101,37 @@ async def ingest_document(file: UploadFile = File(...)):
         batch = []
         page_count = 0
         
-        # --- THE SAFETY LIMIT ---
-        # We process up to 20 pages. This fits safely in the 50-second Free Tier window.
+        # --- SMART TIME KEEPER ---
         for doc in loader.lazy_load():
             page_count += 1
-            if page_count > 20: 
-                break  # Stop before Timeout
+            
+            # CHECK THE CLOCK: If we've been running for 45 seconds, STOP immediately.
+            # Render Free Tier kills us at 50s.
+            if time.time() - start_time > 40:
+                print("⚠️ Time Limit Reached! Stopping safely.")
+                break 
             
             # Process this page
             page_chunks = text_splitter.split_documents([doc])
             batch.extend(page_chunks)
             
-            # Send to Pinecone in small batches
+            # Send to Pinecone in small batches (every 10 chunks)
             if len(batch) >= 10:
                 vectorstore.add_documents(batch)
                 batch = []
                 
-        # Send leftovers
+        # Send any leftover chunks
         if batch:
             vectorstore.add_documents(batch)
         # ----------------------
 
         os.remove(temp_filename)
         
-        return {"status": "success", "chunks": page_count}
+        return {
+            "status": "success", 
+            "pages_processed": page_count, 
+            "note": "Processing stopped early to prevent timeout" if time.time() - start_time > 40 else "Completed"
+        }
         
     except Exception as e:
         print(f"Error ingesting: {str(e)}")
