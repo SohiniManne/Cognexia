@@ -22,10 +22,7 @@ def ingest():
     print(f"   - Loaded {len(raw_docs)} pages")
 
     # 3. Split Text
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
+   text_splitter = RecursiveCharacterTextSplitter(chunk_size=3000, chunk_overlap=200)
     documents = text_splitter.split_documents(raw_docs)
     print(f"   - Split into {len(documents)} chunks")
 
